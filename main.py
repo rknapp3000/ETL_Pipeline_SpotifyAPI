@@ -10,6 +10,7 @@ import api_token
 
 DATABASE= "sqlite:///my_played_tracks.sqlite"
 USER_ID = "1275336670"
+#bringing in token from a private file
 TOKEN = api_token.api_key
 
 def validate_data(df: pd.DataFrame) -> bool:
