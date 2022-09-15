@@ -6,10 +6,11 @@ import json
 from datetime import datetime
 import datetime
 import sqlite3
+import api_token
 
 DATABASE= "sqlite:///my_played_tracks.sqlite"
 USER_ID = "1275336670"
-TOKEN = "BQCUui70elfwZHFZ3YUOTo-bnkzkUomxyJHEyOnZHqI_E5ern-0zRusHMMqNX_xeAAyMyegThlJMB7u0w4_nYVZjE7skVkfOjfPWIvDB3nN_5zpudOD46crvRJS4rgK1eGKMg-t_vPqgxnkgZWsj"
+TOKEN = api_token.api_key
 
 def validate_data(df: pd.DataFrame) -> bool:
     # Check that there is data in the dataframe seeing if its empty
