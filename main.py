@@ -29,7 +29,7 @@ def validate_data(df: pd.DataFrame) -> bool:
     if df.isnull().values.any():
         raise Exception("Null values were found in data")
 
-    #  Check that all timestamps are of yesterday's date, commented out to use data from current day
+    #  Check that all timestamps are of yesterday's date, commented out since we are using data from current day
     # yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
     # yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
     #
