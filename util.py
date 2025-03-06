@@ -13,7 +13,7 @@ logger = logging.getLogger()
 DATABASE= "sqlite:///most_played_artists.sqlite"
 
 
-def get_user_data(access_token):
+def get_user_data(access_token: str) -> Dict:
     """Function to get raw user data from api using access token"""
     
     user_data_url = 'https://api.spotify.com/v1/me/top/artists'
@@ -56,7 +56,7 @@ def transform_data(user_data: Dict) -> DataFrame:
     return df
 
 
-def load_data(df: DataFrame): 
+def load_data(df: DataFrame) -> None: 
     """creates table in database and inserts data into table."""
     
     # Preprocess the DataFrame to convert lists to strings (JSON or comma-separated)
