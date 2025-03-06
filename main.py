@@ -1,117 +1,186 @@
 import sqlalchemy
-import pandas as pd
-from sqlalchemy.orm import sessionmaker
+from pandas import DataFrame
+import sqlalchemy
 import requests
-import json
-from datetime import datetime
-import datetime
 import sqlite3
-import api_token
+import os
+from urllib.parse import urlencode
+import base64
+from flask import Flask, redirect, request
+from typing import Dict
+import logging
+from datetime import datetime
 
-DATABASE= "sqlite:///my_played_tracks.sqlite"
-USER_ID = "1275336670"
-#bringing in token from a private file
-TOKEN = api_token.api_key
 
-def validate_data(df: pd.DataFrame) -> bool:
-    # Check that there is data in the dataframe seeing if its empty
-    if df.empty:
-        print("No songs were downloaded. Finishing executing the program")
-        return False
 
-    # Checking if there is a primary key
-    if pd.Series(df['played_at']).is_unique:
-        pass
-    else:
-        raise Exception("Violation of the primary key check")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger()
 
-    # Check for nulls
-    if df.isnull().values.any():
-        raise Exception("Null values were found in data")
+DATABASE= "sqlite:///most_played_artists.sqlite"
+USER_ID = os.getenv('USER_ID')
+TOKEN = os.getenv('TOKEN')
 
-    #  Check that all timestamps are of yesterday's date, commented out since we are using data from current day
-    # yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-    # yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-    #
-    # timestamps = df["timestamp"].tolist()
-    # for timestamp in timestamps:
-    #    # if datetime.datetime.strptime(timestamp, '%Y-%m-%d') != yesterday:
-    #     #    raise Exception("At least one of the returned songs does not have a yesterday's timestamp")
-    #
-    #     return True
+CLIEND_ID = os.getenv('CLIENT_ID')
+CLIENT_SECRET = os.getenv('CLIENT_SECRET')
+redirect_uri = 'http://127.0.0.1:8888/callback'
 
-if __name__ == "__main__":
-    # Extracting the data part of the ETL process
+#Flask
+app = Flask(__name__)
+
+
+#Request User Authorization
+@app.route('/')
+def login():
+
+    scope = 'user-top-read'
+
+    # Query parameters for Spotify's /authorize endpoint
+    query_params = {
+        'response_type': 'code',
+        'client_id': CLIEND_ID,
+        'scope': scope,
+        'redirect_uri': redirect_uri,
+        # 'state': state
+    }
+
+    # Build the authorization URL and redirect the user
+    authorization_url = 'https://accounts.spotify.com/authorize?' + urlencode(query_params)
+    return redirect(authorization_url)
+
+
+# Handle the Spotify callback and request access token
+@app.route('/callback')
+def callback():
+    # Get the query parameters from the URL
+    code = request.args.get('code')
+    error = request.args.get('error')
+
+    # If the error is present in the URL, that means the user denied access
+    assert not error, f"Authorization failed: {error}"  # If error is present, raise AssertionError
+    assert code, "Authorization code not found. Authorization failed."  # If no code, raise AssertionError
+
+    #Exchange the authorization code for an access token
+    token_url = 'https://accounts.spotify.com/api/token'
+    auth_string = f"{CLIEND_ID}:{CLIENT_SECRET}"
+    auth_base64 = base64.b64encode(auth_string.encode()).decode()
 
     headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": "Bearer {token}".format(token=TOKEN)
+        'Authorization': f'Basic {auth_base64}',
+        'Content-Type': 'application/x-www-form-urlencoded'
     }
 
-    # Converting the time to Unix timestamp in miliseconds specified by API
-    today = datetime.datetime.now()
-    yesterday = today - datetime.timedelta(days=1)
-    yesterday_unix_timestamp = int(yesterday.timestamp()) * 1000
-
-    # Download all songs you've listened to "after yesterday", which means in the last 24 hours
-    r = requests.get(
-        "https://api.spotify.com/v1/me/player/recently-played?after={time}".format(time=yesterday_unix_timestamp), headers=headers)
-
-    data = r.json()
-
-    songs = []
-    artist = []
-    played_at = []
-    timestamps = []
-
-    # Extracting only the relevant fields of data from the JSON file
-    for song in data["items"]:
-        songs.append(song["track"]["name"])
-        artist.append(song["track"]["album"]["artists"][0]["name"])
-        played_at.append(song["played_at"])
-        timestamps.append(song["played_at"][0:10])
-
-    # Create a dictionary to turn into Pandas dataframe below
-    song_dict = {
-        "song_name": songs,
-        "artist_name": artist,
-        "played_at": played_at,
-        "timestamp": timestamps
+    data = {
+        'code': code,
+        'redirect_uri': redirect_uri,
+        'grant_type': 'authorization_code'
     }
 
-    song_df = pd.DataFrame(song_dict, columns=["song_name", "artist_name", "played_at", "timestamp"])
+    # Make a POST request to the /api/token endpoint
+    response = requests.post(token_url, headers=headers, data=data)
 
-    # Validate the data using the method created above, if the data is valid then proceed to loading stage
-    if validate_data(song_df):
-        print("Data valid, proceed to load stage")
+    # If the request was successful, we'll get the access token
+    if response.status_code == 200:
+        token_info = response.json()
+        access_token = token_info.get('access_token')
+        refresh_token = token_info.get('refresh_token')
+        expires_in = token_info.get('expires_in')
+        
+        user_data = get_user_data(access_token)
+        transformed_data = transform_data(user_data)
+        load_data(transformed_data)
+        
+        # return transformed_data
+        return user_data
+    else:
+        return f"Error exchanging code for token: {response.status_code} - {response.text}"
+    
+    
+def get_user_data(access_token):
+    # Spotify API endpoint for getting user data
+    user_data_url = 'https://api.spotify.com/v1/me/top/artists'
 
-    # Load the data to the database
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
 
+    # Make a GET request to fetch user's data
+    response = requests.get(user_data_url, headers=headers)
+
+    # If the request is successful, return the JSON data
+    if response.status_code == 200:
+        return response.json()  # This will return the user data as a JSON response
+    else:
+        return {"error": f"Error fetching user data: {response.status_code} - {response.text}"}
+
+
+def transform_data(user_data: Dict) -> DataFrame:
+    """Transforms the raw user data and picks fields out of the json that we want in our final table"""
+    current_date = datetime.now().strftime('%Y-%m-%d')
+
+    artists = []
+    
+    for artist in user_data['items']:
+        artist_info = {
+            "artist_name": artist.get('name', ''),
+            "popularity_rating": artist.get('popularity', 0),
+            "artist_id": artist.get('id', ''),
+            "spotify_url": artist['external_urls'].get('spotify', ''),
+            "genres": artist.get('genres', []),
+            "followers_count": artist['followers'].get('total', 0),
+            "images": [image['url'] for image in artist.get('images', [])],
+            "current_date": current_date
+        }
+        artists.append(artist_info)
+
+    df = DataFrame(artists)
+
+    return df
+
+ 
+def load_data(df: DataFrame): 
+    """creates table in database and inserts data into table."""
+    
+# Preprocess the DataFrame to convert lists to strings (JSON or comma-separated)
+    df['genres'] = df['genres'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+    df['images'] = df['images'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+        
     engine = sqlalchemy.create_engine(DATABASE)
-    connection = sqlite3.connect('my_played_tracks.sqlite')
+    connection = sqlite3.connect('most_played_artists.sqlite')
     cursor = connection.cursor()
 
     sql_query = """
-       CREATE TABLE IF NOT EXISTS my_played_tracks(
-           song_name VARCHAR(200),
-           artist_name VARCHAR(200),
-           played_at VARCHAR(200),
-           timestamp VARCHAR(200),
-           CONSTRAINT primary_key_constraint PRIMARY KEY (played_at)
+       CREATE TABLE IF NOT EXISTS most_played_artists(
+            artist_name TEXT,
+            popularity_rating INTEGER,
+            artist_id TEXT,
+            spotify_url TEXT,
+            genres TEXT,
+            followers_count INTEGER,
+            images TEXT,
+            current_date TEXT     
        )
        """
-
+    
     cursor.execute(sql_query)
-    print("Database opened successfully")
 
     try:
-        song_df.to_sql("my_played_tracks", engine, index=False, if_exists='append')
-    except:
-        print("Data already exists in the database")
+        logger.info("Inserting data in table........")
+        df.to_sql("most_played_artists", engine, index=False, if_exists='append')
+    except Exception as e:
+            logger.error(f"Error inserting data: {e}")
 
     connection.close()
-    print("Database closed successfully")
+    logger.info("Database closed successfully")
+    
+    
+    
+
+
+
+if __name__ == "__main__":
+    
+    # Run the Flask application on port 8888
+    app.run(debug=True, port=8888)
 
 
 
