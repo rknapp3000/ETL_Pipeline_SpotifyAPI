@@ -1,15 +1,9 @@
-import sqlalchemy
-from pandas import DataFrame
-import sqlalchemy
 import requests
-import sqlite3
 import os
 from urllib.parse import urlencode
 import base64
 from flask import Flask, redirect, request
-from typing import Dict
 import logging
-from datetime import datetime
 from util import get_user_data, transform_data, load_data
 
 
