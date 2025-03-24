@@ -11,7 +11,7 @@ This project is a Flask-based web application that integrates with the Spotify A
 
 # To Run Locally
 
-1. source .env to export environment variables
-2. run python main.py in terminal
-2. click http://127.0.0.1:8888 
+1. Source the .env to export environment variables
+2. Run python main.py in terminal
+2. Click http://127.0.0.1:8888 
 3. Once the web server is clicked you can 
