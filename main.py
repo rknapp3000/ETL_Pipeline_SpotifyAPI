@@ -81,7 +81,6 @@ def callback():
         transformed_data = transform_data(user_data)
         load_data(transformed_data)
         
-        # return transformed_data
         return user_data
     else:
         return f"Error exchanging code for token: {response.status_code} - {response.text}"
