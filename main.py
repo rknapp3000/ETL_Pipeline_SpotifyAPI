@@ -7,15 +7,13 @@ import logging
 from util import get_user_data, transform_data, load_data
 
 
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
 USER_ID = os.getenv('USER_ID')
-TOKEN = os.getenv('TOKEN')
-
 CLIEND_ID = os.getenv('CLIENT_ID')
 CLIENT_SECRET = os.getenv('CLIENT_SECRET')
+
 redirect_uri = 'http://127.0.0.1:8888/callback'
 
 #Flask
